@@ -1,10 +1,27 @@
-import { _electron as electron, expect } from '@playwright/test';
+import { _electron as electron, expect, test } from '@playwright/test';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 export const root = path.resolve(import.meta.dirname, '..');
-export const nav = (page, name) => page.locator('aside nav').getByRole('button', { name: new RegExp(name) }).click();
+export async function nav(page, name) {
+  const target = page.locator('aside nav').getByRole('button', { name: new RegExp(name) });
+  const menu = page.getByRole('button', { name: 'Open menu', exact: true });
+  if (await menu.isVisible()) await menu.click();
+  try {
+    await target.click();
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      width: innerWidth, height: innerHeight, scale: devicePixelRatio,
+      language: document.documentElement.lang,
+      navigation: [...document.querySelectorAll('aside nav button')].map(button => button.textContent),
+      sidebarDisplay: getComputedStyle(document.querySelector('aside')).display,
+    }));
+    console.log('Navigation failure:', JSON.stringify(state));
+    await page.screenshot({ path: test.info().outputPath('navigation-failure.png') });
+    throw error;
+  }
+}
 export const saved = page => expect(page.getByRole('button', { name: 'Saved on device', exact: true })).toBeVisible();
 
 export async function launch(profile, executablePath = process.env.ED_AUDIT_EXECUTABLE) {

@@ -12,6 +12,7 @@ test('offline desktop, isolated renderer, decimal autosave and restart', async (
     page.on('pageerror', error => errors.push(error.message));
     await app.context().setOffline(true);
     await page.getByRole('button', { name: 'Explore a synthetic example', exact: true }).click();
+    await page.setViewportSize({ width: 640, height: 800 });
     await nav(page, 'Data & amendments');
     await page.getByRole('button', { name: 'Pain management', exact: true }).click();
     const field = page.getByRole('textbox', { name: 'Average or median waiting minutes G3', exact: true });
