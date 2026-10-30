@@ -2,12 +2,14 @@
 
 نسخة محلية لويندوز تعمل دون إنترنت، مستندة إلى مصدر التطبيق المنشور `1793377044418` بتاريخ 30 أكتوبر 2026. تضم تدقيق XLSX وJSON، مراجعة النتائج والتعاريف، التصحيحات القابلة للتراجع، الحفظ التلقائي، والتصدير إلى Excel وCSV وJSON وPDF.
 
+[تنزيل الإصدار v1.1.0](https://github.com/alluhaybi22-byte/ed-audit/releases/tag/v1.1.0) · [نتيجة اختبارات ويندوز](https://github.com/alluhaybi22-byte/ed-audit/actions/runs/41143262099)
+
 ## الاستخدام على ويندوز
 
 Windows 10 أو Windows 11، بمعمارية x64. لا يحتاج المستخدم إلى تثبيت Node.js أو Excel لتشغيل التدقيق.
 
-- `ED-Audit-1.1.0-win-x64-Setup.exe`: المثبّت، مع اختيار المجلد واختصارات سطح المكتب وقائمة ابدأ.
-- `ED-Audit-1.1.0-win-x64-Portable.exe`: نسخة محمولة تُشغّل مباشرة.
+- [ED-Audit-1.1.0-win-x64-Setup.exe](https://github.com/alluhaybi22-byte/ed-audit/releases/download/v1.1.0/ED-Audit-1.1.0-win-x64-Setup.exe): المثبّت، مع اختيار المجلد واختصارات سطح المكتب وقائمة ابدأ.
+- [ED-Audit-1.1.0-win-x64-Portable.exe](https://github.com/alluhaybi22-byte/ed-audit/releases/download/v1.1.0/ED-Audit-1.1.0-win-x64-Portable.exe): نسخة محمولة تُشغّل مباشرة.
 
 النسختان تحفظان المراجعة في `%APPDATA%\ED Audit` داخل حساب مستخدم ويندوز، وليس بجوار الملف المحمول. تحتفظ التحديثات وإزالة البرنامج بالبيانات. لا تُشغّل نسختين معًا للحفاظ على سلامة الحفظ. اقرأ [دليل ويندوز](docs/WINDOWS-AR.md).
 
