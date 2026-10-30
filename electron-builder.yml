@@ -1,0 +1,40 @@
+appId: ai.edaudit.desktop
+productName: ED Audit
+copyright: Copyright © ED Audit contributors
+asar: true
+toolsets:
+  wine: 1.0.1
+directories:
+  output: release
+files:
+  - dist/**/*
+  - desktop/**/*
+  - package.json
+extraMetadata:
+  main: desktop/main.cjs
+npmRebuild: false
+artifactName: ED-Audit-${version}-${arch}-${os}-${target}.${ext}
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  executableName: ED-Audit
+  signExecutable: false
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ED Audit
+  uninstallDisplayName: ED Audit
+  deleteAppDataOnUninstall: false
+  artifactName: ED-Audit-${version}-win-x64-Setup.exe
+portable:
+  artifactName: ED-Audit-${version}-win-x64-Portable.exe
+linux:
+  target: dir

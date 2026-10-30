@@ -1,0 +1,98 @@
+name: Windows build and verification
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths-ignore: ['docs/**', 'README.md']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked dependencies and Electron runtime
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx --no-install install-electron
+      - name: Check release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Release tag does not match package.json version' }
+      - name: Unit tests and type check
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run typecheck
+      - name: Build and verify desktop runtime
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:desktop
+      - name: Build installer and portable application
+        run: npm run desktop:win
+      - name: Verify unpacked, installed, portable and reinstalled applications
+        run: |
+          $env:ED_AUDIT_EXECUTABLE = Join-Path $pwd 'release/win-unpacked/ED-Audit.exe'
+          npm run test:desktop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item Env:ED_AUDIT_EXECUTABLE
+          ./scripts/windows-smoke.ps1
+      - name: Calculate checksums
+        run: npm run checksums
+      - name: Upload Windows applications
+        uses: actions/upload-artifact@v4
+        with:
+          name: ED-Audit-Windows-x64
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            release/*Setup.exe
+            release/*Portable.exe
+            release/SHA256SUMS.txt
+            docs/WINDOWS-AR.md
+      - name: Retain failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-test-evidence
+          retention-days: 14
+          path: test-results/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ED-Audit-Windows-x64
+          path: artifacts
+      - name: Publish verified Windows release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; keeping its verified assets."
+            exit 0
+          fi
+          gh release create "$tag" --target "$GITHUB_SHA" \
+            --title "ED Audit $tag — Windows x64" \
+            --notes-file docs/RELEASE-1.1.0.md \
+            $(find artifacts -type f \( -name '*.exe' -o -name 'SHA256SUMS.txt' -o -name 'WINDOWS-AR.md' \))
