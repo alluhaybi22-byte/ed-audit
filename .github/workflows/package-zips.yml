@@ -1,0 +1,63 @@
+name: Package Windows ZIP downloads
+
+on:
+  push:
+    branches: [release/zip-v1.1.0]
+    paths: [.github/workflows/package-zips.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the existing verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir packages
+          gh release download v1.1.0 --repo "$GITHUB_REPOSITORY" --dir packages \
+            --pattern '*Setup.exe' --pattern '*Portable.exe' \
+            --pattern WINDOWS-AR.md --pattern SHA256SUMS.txt
+      - name: Verify and compress each edition separately
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+          folder = Path('packages')
+          expected = {
+              'ED-Audit-1.1.0-win-x64-Setup.exe': '21571b35ad1d26cd6d261ef87e5e595f3e35db3bca97b00a574591a54eac237a',
+              'ED-Audit-1.1.0-win-x64-Portable.exe': '958e8aebe46c35679f831c3fffb6dee45900cd5b7217d4023353ec8aa50ce3bc',
+          }
+          recorded = {}
+          for line in (folder / 'SHA256SUMS.txt').read_text().splitlines():
+              checksum, name = line.split(maxsplit=1)
+              recorded[name.strip()] = checksum
+          checksums = []
+          for name, checksum in expected.items():
+              source = folder / name
+              with source.open('rb') as handle:
+                  actual = hashlib.file_digest(handle, 'sha256').hexdigest()
+              assert actual == checksum == recorded[name], name
+              archive = folder / name.replace('.exe', '.zip')
+              with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as output:
+                  output.write(source, name)
+                  output.write(folder / 'WINDOWS-AR.md', 'WINDOWS-AR.md')
+                  output.writestr('SHA256SUMS.txt', f'{checksum}  {name}\n')
+              with zipfile.ZipFile(archive) as output:
+                  assert output.testzip() is None
+              with archive.open('rb') as handle:
+                  digest = hashlib.file_digest(handle, 'sha256').hexdigest()
+              checksums.append(f'{digest}  {archive.name}\n')
+              print('Verified ZIP:', archive.name)
+          (folder / 'ZIP-SHA256SUMS.txt').write_text(''.join(checksums))
+          PY
+      - name: Attach ZIP files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v1.1.0 --repo "$GITHUB_REPOSITORY" \
+            packages/*Setup.zip packages/*Portable.zip packages/ZIP-SHA256SUMS.txt
