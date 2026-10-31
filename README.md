@@ -2,7 +2,7 @@
 
 نسخة محلية لويندوز تعمل دون إنترنت، تشترك مع تطبيق الويب في محرك التدقيق وواجهة المراجعات. تضم تدقيق XLSX وJSON، مراجعة النتائج والتعاريف، التصحيحات القابلة للتراجع، أرشيف مراجعات مستقل حسب المنشأة والفترة، نقاط استعادة مؤرخة، والتصدير إلى Excel وCSV وJSON وPDF.
 
-[تنزيل الإصدار v1.2.0](https://github.com/alluhaybi22-byte/ed-audit/releases/tag/v1.2.0) · [اختبارات البناء](https://github.com/alluhaybi22-byte/ed-audit/actions/workflows/windows.yml) · [تفاصيل الإصدار](docs/RELEASE-1.2.0.md)
+[تنزيل الإصدار v1.2.0](https://github.com/alluhaybi22-byte/ed-audit/releases/tag/v1.2.0) · [اختبارات البناء](https://github.com/alluhaybi22-byte/ed-audit/actions/workflows/windows.yml) · [تفاصيل الإصدار](docs/RELEASE-1.2.0.md) · [نتائج التحقق وحدوده](docs/VALIDATION-1.2.0.md)
 
 ## الاستخدام على ويندوز
 
