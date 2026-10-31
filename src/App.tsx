@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react';
 import Workspace from './ui.jsx';
+import { openReviewLibrary } from './review-library.mjs';
 
 const STORAGE = 'miyar-ed-workspace-v1';
 
@@ -28,32 +29,42 @@ class AuditErrorBoundary extends Component<{ children: ReactNode }, { failed: bo
           <button className="button secondary" onClick={() => window.location.reload()}>
             {t('إعادة تحميل الصفحة', 'Reload page')}
           </button>
-          <button className="button secondary" onClick={() => {
+          <button className="button secondary" onClick={async () => {
+            let library;
             try {
-              const raw = localStorage.getItem(STORAGE);
+              let raw = localStorage.getItem(STORAGE);
+              try {
+                library = await openReviewLibrary({ legacyRaw: raw });
+                const current = await library.getCurrent();
+                if (current) raw = JSON.stringify(current.doc);
+              } catch { /* Preserve access to the legacy recovery bytes. */ }
               if (raw) {
                 const href = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
                 const link = document.createElement('a');
                 link.href = href;
-                link.download = 'ED-Audit-Recovery.json';
+                link.download = `ED-Audit-Recovery-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                 link.click();
                 setTimeout(() => URL.revokeObjectURL(href), 1000);
               }
             } catch { this.setState({ storageError: true }); }
+            finally { library?.close(); }
           }}>
             {t('تنزيل الحفظ المحلي', 'Download saved copy')}
           </button>
-          <button className="button danger" onClick={() => {
+          <button className="button danger" onClick={async () => {
             if (!window.confirm(t(
-              'هل تريد حذف الحفظ المحلي وبدء مراجعة جديدة؟ نزّل نسخة منه أولًا إذا أردت الاحتفاظ به.',
-              'Delete the saved audit and start again? Download a copy first if you want to keep it.'
+              'هل تريد إغلاق المراجعة الحالية والعودة إلى البداية؟ ستبقى محفوظة في الأرشيف.',
+              'Close the current audit and return to the start? It remains in the review library.'
             ))) return;
+            let library;
             try {
-              localStorage.removeItem(STORAGE);
+              library = await openReviewLibrary();
+              await library.clearCurrent();
               this.setState({ failed: false, storageError: false });
             } catch { this.setState({ storageError: true }); }
+            finally { library?.close(); }
           }}>
-            {t('حذف الحفظ وبدء مراجعة جديدة', 'Delete saved audit and start again')}
+            {t('إغلاق المراجعة والعودة للبداية', 'Close review and return to start')}
           </button>
         </div>
         {this.state.storageError && <p>{t('تعذر الوصول إلى الحفظ المحلي. راجع أذونات المتصفح.', 'Could not access browser storage. Check browser permissions.')}</p>}

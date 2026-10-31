@@ -1,0 +1,134 @@
+name: Linux checks and dependency audit
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+
+# The Windows workflow calls this workflow as its preflight gate on pushes and
+# pull requests. Scheduled runs also review advisories without a source change.
+permissions:
+  contents: read
+
+jobs:
+  logic:
+    name: Pure logic and types on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install locked packages without desktop install scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run pure tests
+        run: npm test
+      - name: Check types
+        run: npm run typecheck
+
+  audit:
+    name: Review runtime and build dependency advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Audit the locked graph and apply the severity policy
+        env:
+          AUDIT_REPORT_DIR: ${{ runner.temp }}/ed-audit-security
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { spawnSync } from 'node:child_process';
+
+          const folder = process.env.AUDIT_REPORT_DIR;
+          fs.mkdirSync(folder, { recursive: true });
+          const reports = {};
+          const failures = [];
+          for (const [scope, extra] of [['all', []], ['production', ['--omit=dev']]]) {
+            const result = spawnSync('npm', [
+              'audit', '--json', '--package-lock-only', '--ignore-scripts',
+              '--fetch-retries=1', '--fetch-timeout=30000', ...extra,
+            ], { encoding: 'utf8', timeout: 90000, maxBuffer: 16 * 1024 * 1024 });
+            const raw = result.stdout || '';
+            fs.writeFileSync(path.join(folder, `${scope}.json`), raw);
+            fs.writeFileSync(path.join(folder, `${scope}-status.json`), JSON.stringify({
+              exitCode: result.status, errorCode: result.error?.code || null,
+            }, null, 2));
+            try {
+              const report = JSON.parse(raw);
+              const counts = report.metadata?.vulnerabilities;
+              const levels = ['info', 'low', 'moderate', 'high', 'critical'];
+              const completeCounts = counts && [...levels, 'total'].every(key =>
+                Number.isInteger(counts[key]) && counts[key] >= 0) &&
+                counts.total === levels.reduce((sum, key) => sum + counts[key], 0);
+              if (result.error || ![0, 1].includes(result.status) || report.error ||
+                  !completeCounts || !report.vulnerabilities ||
+                  typeof report.vulnerabilities !== 'object' || Array.isArray(report.vulnerabilities))
+                throw new Error('Audit did not return a complete advisory report');
+              reports[scope] = report;
+            } catch {
+              failures.push(`${scope}: advisory lookup failed or returned incomplete data`);
+            }
+          }
+
+          const columns = ['info', 'low', 'moderate', 'high', 'critical', 'total'];
+          const summary = [
+            '## Dependency audit', '',
+            '| Scope | Info | Low | Moderate | High | Critical | Total |',
+            '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+          ];
+          for (const scope of ['all', 'production']) {
+            const counts = reports[scope]?.metadata.vulnerabilities;
+            summary.push(`| ${scope} | ${columns.map(k => counts?.[k] ?? 'unavailable').join(' | ')} |`);
+          }
+          summary.push('',
+            'Policy: high or critical findings in the production npm graph block release.',
+            'Build/development findings are retained for manual review and do not silently disappear from a successful build.',
+            'An unavailable or malformed audit response fails this check; it is never treated as zero findings.',
+            'No dependency installation, automatic fix, forced resolution, or lockfile rewrite is performed by the audit step.',
+            '',
+            'Electron is shipped as a runtime even when declared as a development dependency. npm audit does not replace monitoring Electron/Chromium security releases.',
+          );
+
+          const escape = value => String(value).replace(/[|<>\r\n]/g, c =>
+            ({ '|': '\\|', '<': '&lt;', '>': '&gt;', '\r': ' ', '\n': ' ' })[c]);
+          const affected = Object.entries(reports.all?.vulnerabilities || {});
+          const advisories = new Set(affected.flatMap(([, item]) => item.via)
+            .filter(item => item && typeof item === 'object').map(item => item.url || item.source));
+          summary.push('', `Affected package entries: ${affected.length}; distinct direct advisory records: ${advisories.size}.`,
+            'Several affected packages can inherit the same advisory through dependency chains.', '',
+            '| Package | Severity | Suggested resolution (manual review) |',
+            '| --- | --- | --- |');
+          for (const [name, item] of affected.slice(0, 100)) {
+            const fix = item.fixAvailable;
+            const description = fix && typeof fix === 'object'
+              ? `${fix.name}@${fix.version}; review compatibility before changing versions`
+              : fix ? 'Compatible resolution reported by npm' : 'No resolution reported';
+            summary.push(`| ${escape(name)} | ${escape(item.severity)} | ${escape(description)} |`);
+          }
+          if (affected.length) console.log('::warning title=Dependency advisory review::Findings are listed in the job summary and retained JSON reports. Review proposed updates; do not use forced fixes.');
+          const production = reports.production?.metadata.vulnerabilities;
+          if (production && (production.high > 0 || production.critical > 0))
+            failures.push('Production npm dependencies include high or critical advisories');
+          if (failures.length) summary.push('', '### Check failures', ...failures.map(message => `- ${message}`));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary.join('\n') + '\n');
+          if (failures.length) {
+            for (const message of failures) console.error(message);
+            process.exitCode = 1;
+          }
+          JS
+      - name: Retain advisory reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ed-audit-security/
+          retention-days: 30
+          if-no-files-found: ignore

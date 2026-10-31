@@ -20,7 +20,7 @@ try {
     Install-Audit
     $installed = Join-Path $installDir 'ED-Audit.exe'
     $env:ED_AUDIT_EXECUTABLE = $installed
-    npx --no-install playwright test -c desktop-tests/playwright.config.mjs desktop.spec.mjs
+    npx --no-install playwright test -c desktop-tests/playwright.config.mjs desktop.spec.mjs output-consistency.spec.mjs library.spec.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Installed application tests failed' }
 
     $env:ED_AUDIT_MIGRATION_PROFILE = $profile

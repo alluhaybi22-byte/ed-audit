@@ -33,7 +33,7 @@ export async function launch(profile, executablePath = process.env.ED_AUDIT_EXEC
     timeout: 60000,
   });
   const page = await app.firstWindow();
-  await expect(page.locator('main')).toBeVisible();
+  await expect(page.locator('aside nav')).toBeAttached();
   const english = page.getByRole('button', { name: 'English', exact: true });
   if (await english.isVisible()) await english.click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');

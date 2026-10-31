@@ -1,0 +1,9 @@
+.review-library h2, .review-library h3 { margin-bottom: 12px; }
+.review-library p { line-height: 1.8; margin-bottom: 14px; }
+.library-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 20px; }
+.library-checkpoint, .library-actions, .library-version { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.library-checkpoint label { flex: 1; display: grid; gap: 8px; min-width: 180px; }
+.library-versions { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 18px; }
+.library-version { align-items: center; justify-content: space-between; margin-top: 12px; }
+.library-review { overflow-wrap: anywhere; }
+@media print { .review-library { display: none; } }

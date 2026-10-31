@@ -107,10 +107,10 @@ test('failed autosave warns on close, keeps work and permits a recovery backup',
     await page.getByRole('button', { name: 'Explore a synthetic example', exact: true }).click();
     await saved(page);
     await page.evaluate(() => {
-      window.originalSetItem = Storage.prototype.setItem;
-      Storage.prototype.setItem = function(key, value) {
-        if (key === 'miyar-ed-workspace-v1') throw new DOMException('Full', 'QuotaExceededError');
-        return window.originalSetItem.call(this, key, value);
+      window.originalTransaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function(stores, mode, ...options) {
+        if (mode === 'readwrite') throw new DOMException('Full', 'QuotaExceededError');
+        return window.originalTransaction.call(this, stores, mode, ...options);
       };
     });
     await nav(page, 'Data & amendments');
@@ -127,7 +127,7 @@ test('failed autosave warns on close, keeps work and permits a recovery backup',
     const backup = info.outputPath('recovery.json');
     await downloadTo(app, backup, () => page.getByRole('button', { name: /JSON audit backup/ }).click());
     expect(JSON.parse(await readFile(backup, 'utf8')).edits['Summary Sheet!C28']).toBe('Recovery Reviewer');
-    await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
+    await page.evaluate(() => { IDBDatabase.prototype.transaction = window.originalTransaction; });
     await page.getByRole('button', { name: 'Save on device', exact: true }).click();
     await saved(page);
   } finally { await app.close(); }

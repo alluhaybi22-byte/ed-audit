@@ -16,7 +16,7 @@
     ],
     "description": "Verifies the primary review workflow corrects a concrete missing field, preserves an amendment and resumes after refresh.",
     "steps": [
-      "If a saved workspace exists, clear it using Clear workspace and confirm. Choose Explore a synthetic example or استكشاف مثال تجريبي.",
+      "If a saved workspace exists, close it using Close review and confirm. Choose Explore a synthetic example or استكشاف مثال تجريبي.",
       "Open Findings / الأخطاء والملاحظات and open the missing Cluster reviewer / اسم مسؤول التجمع field finding for Summary Sheet!C28.",
       "Use the Summary Sheet!C28 location link to navigate to Data & amendments. Enter Verified Reviewer into the Cluster reviewer C28 input.",
       "Verify the missing C28 finding is gone and the amendment history records the field change.",
@@ -43,7 +43,7 @@
     ],
     "description": "Verifies review notes and filters work while definition ambiguities remain visible in the KPI view.",
     "steps": [
-      "Clear any existing workspace with confirmation, load the synthetic example, and switch to English if needed. Verify the app is named ED Audit.",
+      "Close any existing review using Close review and confirm, load the synthetic example, and switch to English if needed. Verify the app is named ED Audit.",
       "Open Findings, search for Four-hour, open the matching finding, write Cohort exclusions requested in Reviewer note and check the reviewed checkbox. Click Done.",
       "Filter Review status to Reviewed and verify that the documented finding is listed. Reopen it and verify the note remains. Close it.",
       "Open Performance indicators. Inspect all eight indicators and expand the Calculation & source section for Disposition within 4 hours.",
@@ -68,7 +68,7 @@
     ],
     "description": "Verifies mobile users can edit data and that invalid inputs do not create apparently valid KPI results.",
     "steps": [
-      "Clear any existing workspace with confirmation, load the synthetic example and switch to English if needed.",
+      "Close any existing review using Close review and confirm, load the synthetic example and switch to English if needed.",
       "Use the mobile menu to open Data & amendments. Select ED statistics and change Total patients H2 to -1.",
       "Use the mobile menu to open Findings and verify an invalid numeric value finding appears. Open Performance indicators and verify door-to-doctor is unavailable.",
       "Return to ED statistics and blank H2. Verify the required numeric cell finding is now shown rather than a zero value.",
@@ -86,29 +86,36 @@
       "JSON backup download",
       "file upload and replacement",
       "restore notes and amendments",
-      "clear workspace confirmation",
+      "close review confirmation",
       "malformed JSON rejection preserves current audit",
       "partial workbook JSON restore",
       "missing-sheet findings preserved",
       "original source total error after dependent amendment",
       "amended Excel export",
       "mismatched Excel source rejection",
-      "highlighted amendments and retained source workbook"
+      "highlighted amendments and retained source workbook",
+      "independent saved reviews",
+      "dated restore points",
+      "recovery before restoration",
+      "delete review isolation",
+      "dated JSON backup"
     ],
     "description": "Verifies a downloaded backup can be uploaded again and reproduces a concrete amended audit.",
     "steps": [
-      "Clear any existing workspace with confirmation and load the synthetic example. Switch to English if needed.",
+      "Close any existing review using Close review and confirm and load the synthetic example. Switch to English if needed.",
       "Open Data & amendments, File details, and enter Backup Reviewer in Cluster reviewer C28.",
       "Open Audit report and download JSON audit backup. Also export report CSV and verify a CSV download starts.",
       "Create a malformed JSON copy from the actual downloaded backup by adding an extra top-level sheets entry with cells:null (for example sheets.extra = {cells:null}), upload that copy, and verify a visible invalid-backup error appears while Backup Reviewer and the active audit remain. Use the original unmodified downloaded backup for the next steps.",
-      "Clear the workspace and confirm. Use Choose file on the empty overview to upload the actual JSON backup downloaded in the earlier step.",
+      "Close the review and confirm. Use Choose file on the empty overview to upload the actual JSON backup downloaded in the earlier step.",
       "Open File details and Amendment history, then Audit report.",
-      "Generate genuine full.xlsx and partial.xlsx test workbooks using tests/xlsx-fixture.mjs (workbookFixture() and workbookFixture({partial:true})); retain both original files. Clear the workspace and import partial.xlsx. Enter Partial Reviewer into C28, wait for Saved on device and refresh. Verify C28 and missing-sheet findings remain. Download its JSON backup and restore that actual file; confirm replacement when prompted. Verify the same missing-sheet findings and C28 remain.",
-      "Clear the workspace and import full.xlsx. In ED statistics change I2 from 600 to 601. Open Findings and search ED_Statistics!I7: an original source total error must remain alongside a separate stored-total-needs-refresh warning.",
+      "Generate genuine full.xlsx and partial.xlsx test workbooks using tests/xlsx-fixture.mjs (workbookFixture() and workbookFixture({partial:true})); retain both original files. Close the review, confirm and import partial.xlsx. Enter Partial Reviewer into C28, wait for Saved on device and refresh. Verify C28 and missing-sheet findings remain. Download its JSON backup and restore that actual file; confirm replacement when prompted. Verify the same missing-sheet findings and C28 remain.",
+      "Close the review, confirm and import full.xlsx. In ED statistics change I2 from 600 to 601. Open Findings and search ED_Statistics!I7: an original source total error must remain alongside a separate stored-total-needs-refresh warning.",
       "Open File details and enter Excel Reviewer into C28. Open Audit report and choose Export amended Excel — select original. Select partial.xlsx and verify a source-mismatch error without replacing the current audit. Repeat with full.xlsx and verify an amended XLSX download and recalculation guidance.",
-      "Open the downloaded XLSX using an independent spreadsheet reader. Verify C28 is Excel Reviewer, I2 is 601, amended cells have yellow fill, original formatting and the Notes sheet remain, and formulas request recalculation. The selected original full.xlsx must remain unchanged."
+      "Open the downloaded XLSX using an independent spreadsheet reader. Verify C28 is Excel Reviewer, I2 is 601, amended cells have yellow fill, original formatting and the Notes sheet remain, and formulas request recalculation. The selected original full.xlsx must remain unchanged.",
+      "Open Saved reviews and save a restore point named Before review. Open File details, change C28 to Updated Reviewer and wait for Saved on device. Return to Saved reviews, expand Saved versions for the current review and restore Before review; confirm. Verify C28 returns to Excel Reviewer and a Before restoration recovery point remains.",
+      "Import another actual JSON backup with a different facility and month, confirming the new review. Verify both reviews remain in Saved reviews, open the original and verify its contents. Delete only the second review and verify the original still opens after refresh."
     ],
-    "expected": "The uploaded backup restores Backup Reviewer, the amendment history and synthetic source label. The audit report contains findings, evidence, eight KPIs and CTAS reconciliation. CSV and JSON downloads are produced. No data is sent to an app backend. The malformed JSON is rejected with a visible error and the current review remains usable; the original valid backup still restores correctly. Partial workbooks remain restorable and incomplete rather than being fabricated as complete. The original total error remains after dependent input edits. Excel export rejects the wrong source and produces a separate copy with highlighted amendments, preserved source formatting and recalculation instructions."
+    "expected": "The uploaded backup restores Backup Reviewer, the amendment history and synthetic source label. The audit report contains findings, evidence, eight KPIs and CTAS reconciliation. CSV and JSON downloads are produced. No data is sent to an app backend. The malformed JSON is rejected with a visible error and the current review remains usable; the original valid backup still restores correctly. Partial workbooks remain restorable and incomplete rather than being fabricated as complete. The original total error remains after dependent input edits. Excel export rejects the wrong source and produces a separate copy with highlighted amendments, preserved source formatting and recalculation instructions. Saved reviews are independent by facility/period, dated restore points recover prior values and preserve the state before restoration, and deleting another review leaves the original intact."
   },
   {
     "name": "Reject an unrelated file without discarding the active audit",
@@ -125,12 +132,12 @@
     ],
     "description": "Verifies invalid imports preserve active work and a new manual review correctly exposes missing required data.",
     "steps": [
-      "Clear any existing workspace with confirmation, load the synthetic example and switch to English if needed.",
+      "Close any existing review using Close review and confirm, load the synthetic example and switch to English if needed.",
       "Export report CSV, then use Replace file to attempt uploading that CSV as an input file by setting the file input to the downloaded CSV, even though the picker normally filters extensions.",
       "Verify an error explains only XLSX or JSON are supported, and the synthetic audit still has 1000 total patients.",
-      "Clear the workspace, confirm and choose Or enter data manually. Inspect File details and ED statistics without entering zero into the blank cells.",
+      "Close the review, confirm and choose Or enter data manually. Inspect File details and ED statistics without entering zero into the blank cells.",
       "Open Audit report and verify the report contains missing-field errors and unavailable dependent KPI values. Verify the Print / Save PDF control is available.",
-      "Using browser test instrumentation, make Storage.setItem throw QuotaExceededError for miyar-ed-workspace-v1 only. Enter Unsaved Reviewer in C28. Verify the autosave failure message is visible and the entered value remains. Dispatch a cancelable beforeunload event and verify it is canceled while the changes remain unsaved.",
+      "Using browser test instrumentation, make IDBDatabase.transaction throw QuotaExceededError for readwrite transactions only. Enter Unsaved Reviewer in C28. Verify the autosave failure message is visible and the entered value remains. Dispatch a cancelable beforeunload event and verify it is canceled while the changes remain unsaved.",
       "Download the JSON backup despite the storage failure. Verify it contains Unsaved Reviewer. Remove the injected storage fault after this test."
     ],
     "expected": "Unsupported input produces a visible error and does not replace the current audit. Manual entry starts with genuinely blank fields, required-data findings and unavailable KPIs. A printable report is available. A storage failure preserves edits in memory, offers JSON backup recovery, and activates the unsaved-exit warning; the downloaded backup contains the unsaved amendment."

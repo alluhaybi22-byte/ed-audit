@@ -56,6 +56,9 @@ import {
   cellKey,
 } from './model.mjs';
 import { parseFile } from './parser.mjs';
+import { openReviewLibrary } from './review-library.mjs';
+import ReviewLibraryPanel from './ReviewLibraryPanel.jsx';
+import './review-library.css';
 import { exportAmendedXlsx } from './export-xlsx.mjs';
 import { possibleCorrections, activeCorrections, applyCorrection, undoCorrection } from './corrections.mjs';
 import { formulaValue } from './model.mjs';
@@ -121,6 +124,7 @@ const categories = {
 };
 const nav = [
   ['overview', LayoutDashboard, 'نظرة عامة', 'Overview'],
+  ['library', History, 'المراجعات المحفوظة', 'Saved reviews'],
   ['findings', ListChecks, 'الأخطاء والملاحظات', 'Findings'],
   ['corrections', ClipboardCheck, 'التصحيحات الممكنة', 'Possible corrections'],
   ['data', FileSpreadsheet, 'البيانات والتعديلات', 'Data & amendments'],
@@ -264,6 +268,15 @@ export default function Workspace() {
   const [restored] = useState(restoreWorkspace);
   const [doc, setDoc] = useState(restored.doc);
   const [saved, setSaved] = useState(!!doc);
+  const [ready, setReady] = useState(false);
+  const [libraryEpoch, setLibraryEpoch] = useState(0);
+  const [projectId, setProjectId] = useState(null);
+  const libraryRef = useRef(null);
+  const docRef = useRef(doc);
+  const idRef = useRef(null);
+  const savedRef = useRef(!!doc);
+  const sessionRef = useRef(0);
+  const saveChain = useRef(Promise.resolve());
   const [view, setView] = useState('overview');
   const [autoSave, setAutoSave] = useState(false);
   const exportRef = useRef(null);
@@ -309,7 +322,10 @@ export default function Workspace() {
       : doc.sourceName
     : '';
   const changeDoc = updater => {
-    setDoc(prev => (typeof updater === 'function' ? updater(prev) : updater));
+    const next = typeof updater === 'function' ? updater(docRef.current) : updater;
+    docRef.current = next;
+    setDoc(next);
+    savedRef.current = false;
     setSaved(false);
     setAutoSave(true);
   };
@@ -340,6 +356,100 @@ export default function Workspace() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [detail, confirm]);
+  useEffect(() => {
+    let active = true;
+    let connection;
+    let legacyRaw = null;
+    try { legacyRaw = localStorage.getItem(STORAGE); } catch { /* Recovery stays in memory. */ }
+    openReviewLibrary({ legacyRaw }).then(async library => {
+      connection = library;
+      if (!active) { library.close(); return; }
+      libraryRef.current = library;
+      const current = await library.getCurrent();
+      if (!active) return;
+      adopt(current);
+      if (library.legacyInvalid) setError(t('تعذر استعادة الحفظ القديم؛ بقيت بياناته كما هي. يمكنك استيراد نسخة JSON سليمة.', 'The legacy save could not be restored; its bytes were preserved. Import a valid JSON backup.'));
+    }).catch(() => {
+      if (active) setError(t('تعذر فتح الأرشيف المحلي. احتفظ بنسخة JSON؛ المراجعة الحالية متاحة في الذاكرة.', 'Could not open local review storage. Keep a JSON backup; the current review remains available in memory.'));
+    }).finally(() => { if (active) setReady(true); });
+    return () => { active = false; connection?.close(); };
+  }, []);
+  function adopt(record) {
+    sessionRef.current++;
+    docRef.current = record?.doc || null;
+    idRef.current = record?.id || null;
+    savedRef.current = !!record;
+    setDoc(docRef.current);
+    setProjectId(idRef.current);
+    setSaved(!!record);
+    setAutoSave(false);
+    setLibraryEpoch(n => n + 1);
+  }
+  function persistCurrent() {
+    const candidate = docRef.current;
+    const session = sessionRef.current;
+    if (!candidate) return Promise.resolve(null);
+    const pending = saveChain.current.catch(() => {}).then(async () => {
+      if (session !== sessionRef.current) return null;
+      if (!libraryRef.current) throw new Error('storage-unavailable');
+      const record = await libraryRef.current.save(candidate, { id: idRef.current });
+      if (session === sessionRef.current) {
+        idRef.current = record.id;
+        setProjectId(record.id);
+        setLibraryEpoch(n => n + 1);
+        if (docRef.current === candidate) {
+          savedRef.current = true;
+          setSaved(true);
+        }
+      }
+      return record;
+    });
+    saveChain.current = pending;
+    return pending;
+  }
+  async function preserveCurrent() {
+    await saveChain.current.catch(() => {});
+    if (docRef.current && !savedRef.current) await persistCurrent();
+  }
+  async function libraryAction(action) {
+    setBusy(true);
+    try { await preserveCurrent(); await action(); }
+    catch { setError(t('تعذر حفظ العملية. بقيت المراجعة الحالية مفتوحة؛ نزّل نسخة JSON وأعد المحاولة.', 'Could not save this operation. The current review remains open; download a JSON backup and retry.')); }
+    finally { setBusy(false); }
+  }
+  async function startFresh(next, target = 'overview') {
+    await libraryAction(async () => {
+      if (libraryRef.current) adopt(await libraryRef.current.save(next, { id: null }));
+      else {
+        adopt(null);
+        changeDoc(next);
+        setAutoSave(false);
+      }
+      setDetail(null);
+      setSection('Summary Sheet');
+      switchView(target);
+    });
+  }
+  function askRestore(id, snapshotId) {
+    setConfirm({ kind: 'restore-point', title: t('استعادة النسخة المؤرخة؟', 'Restore this saved version?'),
+      message: t('ستُحفظ الحالة الحالية كنقطة استعادة قبل فتح النسخة المختارة.', 'The current saved state is preserved as a recovery point before restoring this version.'),
+      button: t('استعادة النسخة', 'Restore version'), action: () => libraryAction(async () => {
+        adopt(await libraryRef.current.restore(id, snapshotId));
+        switchView('data'); setNotice(t('استعيدت النسخة المؤرخة.', 'Saved version restored.'));
+      }) });
+  }
+  function askDelete(id) {
+    setConfirm({ kind: 'delete-review', title: t('حذف هذه المراجعة؟', 'Delete this review?'),
+      message: t('سيُحذف هذا السجل ونسخه المؤرخة فقط. نزّل نسخة JSON أولًا إن احتجت الاحتفاظ به.', 'Only this review and its saved versions will be deleted. Download a JSON backup first if needed.'),
+      button: t('حذف المراجعة', 'Delete review'), action: () => libraryAction(async () => {
+        await libraryRef.current.remove(id);
+        if (id === libraryRef.current.legacyProjectId) {
+          try { localStorage.removeItem(STORAGE); } catch { /* Original legacy bytes may remain in restricted storage. */ }
+        }
+        if (id === idRef.current) adopt(null);
+        setLibraryEpoch(n => n + 1);
+      }) });
+  }
   function requestReplace(action) {
     if (doc && (doc.log.length > 0 || Object.keys(doc.reviews).length > 0))
       setConfirm({ kind: 'replace', action });
@@ -353,9 +463,7 @@ export default function Workspace() {
     try {
       const next = inspectDocument(await parseFile(file));
       requestReplace(() => {
-        changeDoc(next);
-        setDetail(null);
-        switchView('overview');
+        startFresh(next);
         setNotice(
           t('تم استيراد الملف وفحص بياناته.', 'Workbook imported and audited.')
         );
@@ -394,18 +502,15 @@ export default function Workspace() {
     }
   }
   useEffect(() => {
-    if (!doc || saved || !autoSave) return;
+    if (!ready || !doc || saved || !autoSave) return;
     const timer = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE, JSON.stringify(doc));
-        setSaved(true);
-      } catch {
+      persistCurrent().catch(() => {
         setAutoSave(false);
         setError(t('تعذر الحفظ التلقائي. نزّل نسخة JSON للاحتفاظ بعملك.', 'Autosave failed. Download a JSON backup to keep your work.'));
-      }
+      });
     }, 700);
     return () => clearTimeout(timer);
-  }, [doc, saved, autoSave, lang]);
+  }, [doc, saved, autoSave, ready]);
   useEffect(() => {
     if (!doc || saved) return;
     const warn = event => { event.preventDefault(); event.returnValue = ''; };
@@ -434,32 +539,15 @@ export default function Workspace() {
       if (exportRef.current) exportRef.current.value = '';
     }
   }
-  function saveLocal() {
+  async function saveLocal() {
     try {
-      localStorage.setItem(STORAGE, JSON.stringify(doc));
-      setSaved(true);
-      setNotice(
-        t(
-          'حُفظت المراجعة على هذا المتصفح. يمكنك المتابعة بعد إغلاق الصفحة.',
-          'Audit saved in this browser. You can resume after closing the page.'
-        )
-      );
+      await persistCurrent();
+      setNotice(t('حُفظت المراجعة في الأرشيف المحلي.', 'Audit saved in this device review library.'));
     } catch {
-      setError(
-        t(
-          'تعذر الحفظ على الجهاز. نزّل نسخة JSON للاحتفاظ بعملك.',
-          'Could not save on this device. Download a JSON backup to retain your work.'
-        )
-      );
+      setError(t('تعذر الحفظ على الجهاز. نزّل نسخة JSON للاحتفاظ بعملك.', 'Could not save on this device. Download a JSON backup to retain your work.'));
     }
   }
-  const newDoc = demo =>
-    requestReplace(() => {
-      changeDoc(demo ? exampleDocument() : blankDocument());
-      setDetail(null);
-      setSection('Summary Sheet');
-      switchView(demo ? 'overview' : 'data');
-    });
+  const newDoc = demo => requestReplace(() => startFresh(demo ? exampleDocument() : blankDocument(), demo ? 'overview' : 'data'));
   const goToCell = ref => {
     const sep = ref.lastIndexOf('!');
     const sheet = ref.slice(0, sep),
@@ -1454,6 +1542,7 @@ export default function Workspace() {
     );
   }
 
+  if (!ready) return <main role="status">{t('جارٍ فتح المراجعات المحفوظة…', 'Opening saved reviews…')}</main>;
   return (
     <>
       <div className="app-shell">
@@ -2230,6 +2319,11 @@ export default function Workspace() {
               ) : (
                 <Empty />
               ))}
+            {view === 'library' && <ReviewLibraryPanel library={libraryRef.current} epoch={libraryEpoch} currentId={projectId} busy={busy} lang={lang}
+              onOpen={id => libraryAction(async () => { adopt(await libraryRef.current.load(id)); switchView('data'); })}
+              onRestore={askRestore} onDelete={askDelete}
+              onCheckpoint={label => libraryAction(async () => { await libraryRef.current.checkpoint(idRef.current, label); setLibraryEpoch(n => n + 1); setNotice(t('حُفظت نقطة استعادة مؤرخة.', 'Dated restore point saved.')); })}
+              onError={() => setError(t('تعذر قراءة الأرشيف المحلي. احتفظ بنسخة JSON.', 'Could not read the review library. Keep a JSON backup.'))} />}
             {view === 'definitions' && <>{Definitions()}</>}
             {view === 'report' && (
               <>
@@ -2259,7 +2353,7 @@ export default function Workspace() {
                       onClick={() =>
                         download(
                           JSON.stringify(doc, null, 2),
-                          'ED-Audit-Workspace.json',
+                          `ED-Audit-Workspace-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
                           'application/json'
                         )
                       }
@@ -2288,7 +2382,7 @@ export default function Workspace() {
                   onClick={() => setConfirm({ kind: 'clear' })}
                 >
                   <Trash2 size={13} />
-                  {t('مسح مساحة العمل', 'Clear workspace')}
+                  {t('إغلاق المراجعة', 'Close review')}
                 </button>
               )}
             </footer>
@@ -2428,20 +2522,20 @@ export default function Workspace() {
               <AlertTriangle size={25} />
             </div>
             <h2>
-              {confirm.kind === 'clear'
-                ? t('مسح مساحة العمل؟', 'Clear this workspace?')
+              {confirm.title || (confirm.kind === 'clear'
+                ? t('إغلاق المراجعة الحالية؟', 'Close current review?')
                 : confirm.kind === 'revert'
                   ? t('استعادة القيم الأصلية؟', 'Revert all amendments?')
                   : t(
                       'استبدال المراجعة الحالية؟',
                       'Replace the current audit?'
-                    )}
+                    ))}
             </h2>
             <p>
-              {confirm.kind === 'clear'
+              {confirm.message || (confirm.kind === 'clear'
                 ? t(
-                    'ستُمسح بيانات المراجعة من هذا المتصفح. يمكنك تنزيل نسخة JSON قبل المسح.',
-                    'Audit data will be removed from this browser. You can download a JSON backup first.'
+                    'ستُغلق المراجعة الحالية بعد حفظها؛ ستبقى متاحة في المراجعات المحفوظة. الحذف النهائي يتم من الأرشيف.',
+                    'The current review will be saved and closed; it remains in Saved reviews. Delete it permanently from the library.'
                   )
                 : confirm.kind === 'revert'
                   ? t(
@@ -2449,9 +2543,9 @@ export default function Workspace() {
                       'All amendments and their history will be removed and imported values restored. Existing review notes remain tied to their original evidence.'
                     )
                   : t(
-                      'توجد تعديلات أو ملاحظات مراجعة. احفظ نسخة JSON إذا أردت الاحتفاظ بها قبل استبدال الملف.',
-                      'There are amendments or review notes. Save a JSON backup if you want to retain them before replacing this audit.'
-                    )}
+                      'ستُحفظ المراجعة الحالية مستقلة قبل فتح مراجعة جديدة. إن تعذّر الحفظ ستبقى الحالية مفتوحة.',
+                      'The current review is saved separately before opening a new one. If saving fails, the current review stays open.'
+                    ))}
             </p>
             <div className="confirm-actions">
               <button
@@ -2467,7 +2561,7 @@ export default function Workspace() {
                   onClick={() =>
                     download(
                       JSON.stringify(doc, null, 2),
-                      'ED-Audit-Workspace.json',
+                      `ED-Audit-Workspace-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
                       'application/json'
                     )
                   }
@@ -2481,34 +2575,20 @@ export default function Workspace() {
                 onClick={() => {
                   const action = confirm;
                   setConfirm(null);
-                  if (action.kind === 'replace') action.action();
+                  if (action.action) action.action();
                   else if (action.kind === 'revert')
                     changeDoc(prev => ({ ...prev, edits: {}, formulaEdits: {}, log: [] }));
-                  else {
-                    try {
-                      localStorage.removeItem(STORAGE);
-                    } catch {
-                      setError(
-                        t(
-                          'تعذر حذف الحفظ المحلي. راجع أذونات المتصفح.',
-                          'Could not remove local saved data. Check browser permissions.'
-                        )
-                      );
-                      return;
-                    }
-                    setDoc(null);
-                    setSaved(false);
-                    setDetail(null);
-                    switchView('overview');
-                    setNotice('');
-                  }
+                  else libraryAction(async () => {
+                    await libraryRef.current?.clearCurrent();
+                    adopt(null); setDetail(null); switchView('overview'); setNotice('');
+                  });
                 }}
               >
-                {confirm.kind === 'clear'
-                  ? t('مسح', 'Clear')
+                {confirm.button || (confirm.kind === 'clear'
+                  ? t('إغلاق', 'Close')
                   : confirm.kind === 'revert'
                     ? t('استعادة', 'Revert')
-                    : t('استبدال', 'Replace')}
+                    : t('استبدال', 'Replace'))}
               </button>
             </div>
           </section>

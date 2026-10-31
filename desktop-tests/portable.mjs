@@ -41,7 +41,7 @@ export async function launchPortable(profile, executable) {
     const context = browser.contexts()[0];
     const page = context.pages()[0] || await context.waitForEvent('page');
     await page.waitForURL(/^audit:\/\/app\//);
-    await page.locator('main').waitFor();
+    await page.locator('aside nav').waitFor({ state: 'attached' });
     const english = page.getByRole('button', { name: 'English', exact: true });
     if (await english.isVisible()) await english.click();
     await page.locator('html[lang="en"]').waitFor();

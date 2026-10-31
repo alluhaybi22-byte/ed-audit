@@ -12,7 +12,11 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    uses: ./.github/workflows/dependency-audit.yml
+
   windows:
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 35
     steps:
@@ -36,6 +40,8 @@ jobs:
           npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/browser-library.mjs
       - name: Build and verify desktop runtime
         run: |
           npm run build
@@ -51,7 +57,10 @@ jobs:
           Remove-Item Env:ED_AUDIT_EXECUTABLE
           ./scripts/windows-smoke.ps1
       - name: Calculate checksums
-        run: npm run checksums
+        run: |
+          npm run checksums
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/package-zips.mjs
       - name: Upload Windows applications
         uses: actions/upload-artifact@v4
         with:
@@ -62,6 +71,8 @@ jobs:
             release/*Setup.exe
             release/*Portable.exe
             release/SHA256SUMS.txt
+            release/*.zip
+            release/ZIP-SHA256SUMS.txt
             docs/WINDOWS-AR.md
       - name: Retain failure evidence
         if: failure()
@@ -86,13 +97,4 @@ jobs:
       - name: Publish verified Windows release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="v$(node -p "require('./package.json').version")"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; keeping its verified assets."
-            exit 0
-          fi
-          gh release create "$tag" --target "$GITHUB_SHA" \
-            --title "ED Audit $tag — Windows x64" \
-            --notes-file docs/RELEASE-1.1.0.md \
-            $(find artifacts -type f \( -name '*.exe' -o -name 'SHA256SUMS.txt' -o -name 'WINDOWS-AR.md' \))
+        run: node scripts/publish-release.mjs
